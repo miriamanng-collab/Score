@@ -14,12 +14,13 @@
 <script>window.fbReady=new Promise(r=>{window._fbres=r})</script>
 <script type="module">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import {getFirestore,doc,onSnapshot,runTransaction} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import {getFirestore,doc,getDoc,onSnapshot,runTransaction} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 const c=window.FIREBASE_CONFIG;
 if(!c||!c.projectId||String(c.projectId).startsWith('YOUR')){window._fbres(null)}else{
  const db=getFirestore(initializeApp(c));
  window._fbres({
-  listen:(code,cb)=>onSnapshot(doc(db,'leagues',code),s=>{if(s.exists())cb(JSON.parse(s.data().json))},()=>{}),
+  listen:(code,cb)=>onSnapshot(doc(db,'leagues',code),s=>{if(s.exists())cb(JSON.parse(s.data().json))},e=>window.onSyncErr&&window.onSyncErr(e)),
+  get:async code=>{const s=await getDoc(doc(db,'leagues',code));return s.exists()?JSON.parse(s.data().json):null},
   merge:(code,L)=>runTransaction(db,async tx=>{const r=doc(db,'leagues',code),s=await tx.get(r);let m=L;
    if(s.exists()){const d=JSON.parse(s.data().json),del=[...new Set([...(d.del||[]),...(L.del||[])])],seen=new Set();
     const all=[...(L.matches||[]),...(d.matches||[])].filter(x=>!del.includes(x.id)&&!seen.has(x.id)&&seen.add(x.id));
@@ -96,7 +97,7 @@ function table(){const T={},sum=(m,i)=>m.res.reduce((a,r)=>a+r[i],0);
 function home(){
  const live=S&&S.phase!='done',tb=table();
  let h=`<div class="row" style="margin-bottom:12px"><button class="pri" onclick="newMatch()">+ New match</button><button onclick="view='teams';render()">👥 Teams & players</button>${live?`<button onclick="view='match';render()">▶ Resume: ${esc(S.teams[0].name)} ${S.sc[0]}–${S.sc[1]} ${esc(S.teams[1].name)} (Set ${S.set})</button><button onclick="reset()">🗑 Delete match</button>`:''}</div>`;
- h+=`<div class="mut" id="sync" style="margin-bottom:10px">${esc(syncMsg)}</div><div class="card"><b>Standings</b><div class="mut">Calculated automatically from saved matches. Ranked by league points, then set ratio, then point ratio.</div>`+(tb.length?`<div style="overflow-x:auto"><table><tr><th>#</th><th>Team</th><th>P</th><th>W</th><th>L</th><th>Sets</th><th>Pts</th></tr>${tb.map((r,i)=>`<tr><td>${i+1}</td><td><b>${esc(r.n)}</b></td><td>${r.P}</td><td>${r.W}</td><td>${r.L}</td><td>${r.sw}–${r.sl}</td><td><b>${r.pts}</b></td></tr>`).join('')}</table></div>`:'<p class="mut">No finished matches yet.</p>')+`</div>`;
+ h+=`<div class="row" style="margin-bottom:10px"><span class="mut" id="sync">${esc(syncMsg)}</span><button style="padding:3px 10px" onclick="syncNow()">↻ Sync now</button></div><div class="card"><b>Standings</b><div class="mut">Calculated automatically from saved matches. Ranked by league points, then set ratio, then point ratio.</div>`+(tb.length?`<div style="overflow-x:auto"><table><tr><th>#</th><th>Team</th><th>P</th><th>W</th><th>L</th><th>Sets</th><th>Pts</th></tr>${tb.map((r,i)=>`<tr><td>${i+1}</td><td><b>${esc(r.n)}</b></td><td>${r.P}</td><td>${r.W}</td><td>${r.L}</td><td>${r.sw}–${r.sl}</td><td><b>${r.pts}</b></td></tr>`).join('')}</table></div>`:'<p class="mut">No finished matches yet.</p>')+`</div>`;
  h+=`<div class="card"><b>Match history</b>`+(HIST.length?HIST.map(m=>`<div style="border-top:1px solid var(--ln);padding:8px 0;margin-top:8px"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span><b>${esc(m.teams[0])}</b> ${m.sets[0]}–${m.sets[1]} <b>${esc(m.teams[1])}</b>${m.wo?' (walkover)':''}</span><button style="padding:2px 9px" onclick="delMatch(${m.id})">✕</button></div><div class="mut">${new Date(m.date).toLocaleString([],{dateStyle:'medium',timeStyle:'short'})}${m.res.length?' · '+m.res.map((r,i)=>`S${i+1} ${r[0]}–${r[1]}`).join(', '):''} · League pts ${mp(m)[0]}–${mp(m)[1]}</div></div>`).join(''):'<p class="mut">Finished matches are saved here automatically.</p>')+`</div>`;
  h+=`<div class="card"><b>Sync code</b><div class="mut">All devices with the same code share one league, live. Your code:</div><div style="font-size:26px;font-weight:800;letter-spacing:2px;margin:6px 0">${esc(LC?LC.toUpperCase():'NOT SET')}</div><div class="mut">Enter this code on any device to join this league. No accounts or emails needed.</div><div class="row" style="margin:8px 0"><button onclick="newLeague()">Start a new league</button></div><textarea id="bk" readonly style="display:none;width:100%;height:80px;margin-bottom:8px"></textarea><div class="mut">Join a league with a sync code:</div><textarea id="imp" placeholder="Enter sync code" style="width:100%;height:60px;margin:6px 0"></textarea><button onclick="joinLeague()">Join league</button></div>`;
  $('app').innerHTML=h}
@@ -156,7 +157,7 @@ function mergeRemote(d){if(!d)return false;let ch=false;
  const n=HIST.length;HIST=HIST.filter(m=>!DEL.includes(m.id));if(HIST.length!=n)ch=true;
  if((d.tu||0)>TU){TEAMS=d.teams||[];TU=d.tu;ch=true}else if(!TEAMS.length&&(d.teams||[]).length){TEAMS=d.teams;ch=true}
  HIST.sort((a,b)=>b.id-a.id);
- if(ch){persist();if(view!='match'&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))render()}return ch}
+ if(ch){persist();if(view=='home'||(view!='match'&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)))render()}return ch}
 async function initCloud(){try{
  const u=await claude.use('user'),db=await claude.use('db');
  if(!u||!db){setSync('Saved on this device only (open while signed in to claude.ai to sync)');return}
@@ -178,7 +179,7 @@ let DB=null,unsub=null;
 async function connect(){if(unsub){try{unsub()}catch(e){}unsub=null}sref=DB.collection('shared').doc(LC);
  try{const s=await sref.get();if(s.exists)mergeRemote(s.data())}catch(e){}
  saveHist();unsub=sref.onSnapshot(s=>{if(s.exists)mergeRemote(s.data())},()=>{})}
-async function setLeague(c){LC=c;try{localStorage.setItem('vb-league-v1',c)}catch(e){}if(DB)await connect();render()}
+async function setLeague(c){if(document.activeElement)document.activeElement.blur();if(!FB){alert('Sync is not set up on this site: config.js needs your Firebase details.');return}LC=c;try{localStorage.setItem('vb-league-v1',c)}catch(e){}if(DB)await connect();render()}
 async function joinLeague(){let c=$('imp').value.toUpperCase().replace(/[^A-Z0-9-]/g,'');if(c=='VOLLEYBALL')c='volleyball';if(c.length<4){alert('Enter a valid sync code.');return}if(c==LC){alert('This device is already on that league.');return}if(!confirm('Join league '+c+'? This device’s matches and teams will be merged into it.'))return;await setLeague(c)}
 async function newLeague(){if(!confirm('Start a new league with a new sync code? This device’s current matches and teams carry over.'))return;const a='ABCDEFGHJKMNPQRSTUVWXYZ23456789';let c='VB-';for(let i=0;i<8;i++)c+=a[Math.floor(Math.random()*a.length)];await setLeague(c)}
 function snap(){H.push(JSON.stringify(S))}
@@ -250,7 +251,9 @@ function render(){
  $('app').innerHTML=h;
 }
 let FB=null;
-function saveHist(){persist();if(!FB||!LC)return;setSync('☁ Syncing…');FB.merge(LC,{matches:HIST,teams:TEAMS,del:DEL,tu:TU}).then(()=>setSync('☁ Synced · league '+LC.toUpperCase())).catch(()=>setSync('⚠ Sync failed — saved on this device'))}
+window.onSyncErr=e=>setSync('⚠ Sync error ('+(e&&e.code||e)+'). Check Firestore rules and config.js.');
+async function syncNow(){if(!FB||!LC){alert('Start or join a league first.');return}try{setSync('☁ Syncing…');const d=await FB.get(LC);if(d)mergeRemote(d);saveHist();render()}catch(e){setSync('⚠ Sync failed ('+(e&&e.code||e)+')')}}
+function saveHist(){persist();if(!FB||!LC)return;setSync('☁ Syncing…');FB.merge(LC,{matches:HIST,teams:TEAMS,del:DEL,tu:TU}).then(()=>setSync('☁ Synced · league '+LC.toUpperCase())).catch(e=>setSync('⚠ Sync failed ('+(e&&e.code||e)+') — saved on this device'))}
 async function connect(){if(unsub){try{unsub()}catch(e){}unsub=null}if(!FB||!LC)return;saveHist();unsub=FB.listen(LC,mergeRemote)}
 async function setLeague(c){LC=c;try{localStorage.setItem('vb-league-v1',c)}catch(e){}await connect();render()}
 async function initCloud(){FB=await window.fbReady;if(!FB){setSync('Local only — add your Firebase config to enable sync (see README)');return}
