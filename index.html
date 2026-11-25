@@ -24,7 +24,7 @@ if(!c||!c.projectId||String(c.projectId).startsWith('YOUR')){window._fbres(null)
   merge:(code,L)=>runTransaction(db,async tx=>{const r=doc(db,'leagues',code),s=await tx.get(r);let m=L;
    if(s.exists()){const d=JSON.parse(s.data().json),del=[...new Set([...(d.del||[]),...(L.del||[])])],seen=new Set();
     const all=[...(L.matches||[]),...(d.matches||[])].filter(x=>!del.includes(x.id)&&!seen.has(x.id)&&seen.add(x.id));
-    const useL=(L.tu||0)>=(d.tu||0);m={matches:all,del,teams:useL?L.teams:d.teams,tu:Math.max(L.tu||0,d.tu||0)}}
+    const useL=(L.tu||0)>=(d.tu||0);m={matches:all,del,teams:useL?L.teams:d.teams,tu:Math.max(L.tu||0,d.tu||0),lname:(L.lnu||0)>=(d.lnu||0)?L.lname:d.lname,lnu:Math.max(L.lnu||0,d.lnu||0)}}
    tx.set(r,{json:JSON.stringify(m),updated:Date.now()})})
  })}
 </script>
@@ -97,9 +97,9 @@ function table(){const T={},sum=(m,i)=>m.res.reduce((a,r)=>a+r[i],0);
 function home(){
  const live=S&&S.phase!='done',tb=table();
  let h=`<div class="row" style="margin-bottom:12px"><button class="pri" onclick="newMatch()">+ New match</button><button onclick="view='teams';render()">👥 Teams & players</button>${live?`<button onclick="view='match';render()">▶ Resume: ${esc(S.teams[0].name)} ${S.sc[0]}–${S.sc[1]} ${esc(S.teams[1].name)} (Set ${S.set})</button><button onclick="reset()">🗑 Delete match</button>`:''}</div>`;
- h+=`<div class="row" style="margin-bottom:10px"><span class="mut" id="sync">${esc(syncMsg)}</span><button style="padding:3px 10px" onclick="syncNow()">↻ Sync now</button></div><div class="card"><b>Standings</b><div class="mut">Calculated automatically from saved matches. Ranked by league points, then set ratio, then point ratio.</div>`+(tb.length?`<div style="overflow-x:auto"><table><tr><th>#</th><th>Team</th><th>P</th><th>W</th><th>L</th><th>Sets</th><th>Pts</th></tr>${tb.map((r,i)=>`<tr><td>${i+1}</td><td><b>${esc(r.n)}</b></td><td>${r.P}</td><td>${r.W}</td><td>${r.L}</td><td>${r.sw}–${r.sl}</td><td><b>${r.pts}</b></td></tr>`).join('')}</table></div>`:'<p class="mut">No finished matches yet.</p>')+`</div>`;
+ h+=`<div class="row" style="margin-bottom:10px"><span class="mut" id="sync">${esc(syncMsg)}</span>${LC?'<button style="padding:3px 10px" onclick="syncNow()">↻ Sync now</button>':''}</div><div class="card"><b>Standings</b><div class="mut">Calculated automatically from saved matches. Ranked by league points, then set ratio, then point ratio.</div>`+(tb.length?`<div style="overflow-x:auto"><table><tr><th>#</th><th>Team</th><th>P</th><th>W</th><th>L</th><th>Sets</th><th>Pts</th></tr>${tb.map((r,i)=>`<tr><td>${i+1}</td><td><b>${esc(r.n)}</b></td><td>${r.P}</td><td>${r.W}</td><td>${r.L}</td><td>${r.sw}–${r.sl}</td><td><b>${r.pts}</b></td></tr>`).join('')}</table></div>`:'<p class="mut">No finished matches yet.</p>')+`</div>`;
  h+=`<div class="card"><b>Match history</b>`+(HIST.length?HIST.map(m=>`<div style="border-top:1px solid var(--ln);padding:8px 0;margin-top:8px"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span><b>${esc(m.teams[0])}</b> ${m.sets[0]}–${m.sets[1]} <b>${esc(m.teams[1])}</b>${m.wo?' (walkover)':''}</span><button style="padding:2px 9px" onclick="delMatch(${m.id})">✕</button></div><div class="mut">${new Date(m.date).toLocaleString([],{dateStyle:'medium',timeStyle:'short'})}${m.res.length?' · '+m.res.map((r,i)=>`S${i+1} ${r[0]}–${r[1]}`).join(', '):''} · League pts ${mp(m)[0]}–${mp(m)[1]}</div></div>`).join(''):'<p class="mut">Finished matches are saved here automatically.</p>')+`</div>`;
- h+=`<div class="card"><b>Sync code</b><div class="mut">All devices with the same code share one league, live. Your code:</div><div style="font-size:26px;font-weight:800;letter-spacing:2px;margin:6px 0">${esc(LC?LC.toUpperCase():'NOT SET')}</div><div class="mut">Enter this code on any device to join this league. No accounts or emails needed.</div><div class="row" style="margin:8px 0"><button onclick="newLeague()">Start a new league</button>${LC?'<button onclick="leaveLeague()">Leave league</button>':''}</div><textarea id="bk" readonly style="display:none;width:100%;height:80px;margin-bottom:8px"></textarea><div class="mut">Join a league with a sync code:</div><textarea id="imp" placeholder="Enter sync code" style="width:100%;height:60px;margin:6px 0"></textarea><button onclick="joinLeague()">Join league</button></div>`;
+ h+=`<div class="card"><b>Leagues</b><select onchange="switchLeague(this.value)" style="margin-top:6px"><option value="" ${!LC?'selected':''}>Local only (this device)</option>${LEAGUES.map(l=>`<option value="${esc(l.code)}" ${l.code==LC?'selected':''}>${esc(l.name||l.code)}</option>`).join('')}</select>${LC?`<div style="font-weight:700;font-size:18px;margin-top:4px">${esc(lname(LC))} <button style="padding:2px 9px" onclick="renameLeague()">✎ Rename</button></div>`:''}<div class="mut">Sync code (same code = same league, live):</div><div style="font-size:26px;font-weight:800;letter-spacing:2px;margin:6px 0">${esc(LC?LC.toUpperCase():'NOT SET')}</div><div class="mut">Enter this code on any device to join this league. No accounts or emails needed.</div><div class="row" style="margin:8px 0"><button onclick="newLeague()">Start a new league</button>${LC?'<button onclick="leaveLeague()">Leave league</button>':''}</div><textarea id="bk" readonly style="display:none;width:100%;height:80px;margin-bottom:8px"></textarea><div class="mut">Join a league with a sync code:</div><input id="imp" placeholder="Enter sync code" autocapitalize="characters" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();joinLeague()}" style="margin:6px 0"><button class="pri" onclick="joinLeague()">Join league</button></div>`;
  $('app').innerHTML=h}
 function showBackupOld(){const e=$('bk');e.value=JSON.stringify(HIST);e.style.display='block';e.focus();e.select()}
 function importBackupOld(){try{const a=JSON.parse($('imp').value);if(!Array.isArray(a))throw 0;const have=new Set(HIST.map(m=>m.id));let n=0;a.forEach(m=>{if(m&&m.id&&m.teams&&m.pts&&!have.has(m.id)){HIST.push(m);n++}});HIST.sort((x,y)=>y.id-x.id);saveHist();alert(n+' match(es) imported');render()}catch(e){alert('That backup code isn’t valid.')}}
@@ -147,11 +147,11 @@ function delPlayer(x,k){const t=TEAMS[x];if(!confirm('Remove '+t.players[k]+' fr
 function delTeam(x){if(!confirm('Delete '+TEAMS[x].name+' and its roster? Past matches are kept.'))return;TEAMS.splice(x,1);saveTeams();render()}
 function teamsView(){$('app').innerHTML=`<div class="row" style="margin-bottom:12px"><button onclick="goHome()">← Home</button><button class="pri" onclick="addTeam()">+ Add team</button></div>`+(TEAMS.length?TEAMS.map((t,x)=>`<div class="card"><input value="${esc(t.name)}" onchange="TEAMS[${x}].name=this.value.trim()||'Team';saveTeams()" style="font-weight:700"><div class="mut">Tap a player to remove</div><div class="chips">${t.players.map((p,k)=>`<span class="chip" onclick="delPlayer(${x},${k})">${esc(p)} ✕</span>`).join('')||'<span class="mut">No players yet</span>'}</div><div class="row" style="flex-wrap:nowrap"><input id="tp${x}" enterkeyhint="next" onkeydown="if(event.key==='Enter'){event.preventDefault();addTP(${x})}" placeholder="Add player" style="margin:0"><button onclick="addTP(${x})">Add</button></div><div class="row" style="margin-top:8px"><button onclick="delTeam(${x})">Delete team</button></div></div>`).join(''):'<p class="mut">No teams yet. Add a team, then add its players.</p>')}
 function rmMatch(id){HIST=HIST.filter(m=>m.id!=id);if(!DEL.includes(id))DEL.push(id)}
-function persist(){try{localStorage.setItem('vb-history-v1',JSON.stringify(HIST));localStorage.setItem('vb-teams-v1',JSON.stringify(TEAMS));localStorage.setItem('vb-meta-v1',JSON.stringify({DEL,TU}))}catch(e){}}
+function persistOld(){try{localStorage.setItem('vb-history-v1',JSON.stringify(HIST));localStorage.setItem('vb-teams-v1',JSON.stringify(TEAMS));localStorage.setItem('vb-meta-v1',JSON.stringify({DEL,TU}))}catch(e){}}
 function saveHist(){persist();const p={matches:HIST,teams:TEAMS,del:DEL,tu:TU,updated:Date.now()};
  const a=sref?sref.set(p).then(()=>1,()=>0):Promise.resolve(0),b=ref?ref.set(p).then(()=>1,()=>0):Promise.resolve(0);
  if(sref||ref){setSync('☁ Syncing…');Promise.all([a,b]).then(([x,y])=>setSync(x?'☁ Live sync on — shared with everyone who has edit access':y?'☁ Backed up to your account only (no edit access to shared data)':'⚠ Backup failed — saved on this device'))}}
-function mergeRemote(d){if(!d)return false;let ch=false;
+function mergeRemote0(d){if(!d)return false;let ch=false;
  (d.del||[]).forEach(i=>{if(!DEL.includes(i)){DEL.push(i);ch=true}});
  const have=new Set(HIST.map(m=>m.id));(d.matches||[]).forEach(m=>{if(!have.has(m.id)&&!DEL.includes(m.id)){HIST.push(m);ch=true}});
  const n=HIST.length;HIST=HIST.filter(m=>!DEL.includes(m.id));if(HIST.length!=n)ch=true;
@@ -253,12 +253,46 @@ function render(){
 let FB=null;
 function leaveLeague(){if(!confirm('Leave league '+LC.toUpperCase()+'? This device keeps its current matches and teams but stops syncing. Other devices are not affected.'))return;if(unsub){try{unsub()}catch(e){}unsub=null}LC='';try{localStorage.removeItem('vb-league-v1')}catch(e){}setSync('Local only — start or join a league below to sync');render()}
 window.onSyncErr=e=>setSync('⚠ Sync error ('+(e&&e.code||e)+'). Check Firestore rules and config.js.');
-async function syncNow(){if(!FB||!LC){alert('Start or join a league first.');return}try{setSync('☁ Syncing…');const d=await FB.get(LC);if(d)mergeRemote(d);saveHist();render()}catch(e){setSync('⚠ Sync failed ('+(e&&e.code||e)+')')}}
-function saveHist(){persist();if(!FB||!LC)return;setSync('☁ Syncing…');FB.merge(LC,{matches:HIST,teams:TEAMS,del:DEL,tu:TU}).then(()=>setSync('☁ Synced · league '+LC.toUpperCase())).catch(e=>setSync('⚠ Sync failed ('+(e&&e.code||e)+') — saved on this device'))}
+async function syncNow(){if(!LC){const c=($('imp')||{}).value;if(c&&c.trim()){await joinLeague();return}alert('You haven’t joined a league yet. Type the code in the “Join a league” box and tap Join league.');return}if(!FB){alert('Sync is not set up on this site: config.js needs your Firebase details.');return}try{setSync('☁ Syncing…');const d=await FB.get(LC);if(d)mergeRemote(d);saveHist();render()}catch(e){setSync('⚠ Sync failed ('+(e&&e.code||e)+')')}}
+function saveHist(){persist();if(!FB||!LC)return;setSync('☁ Syncing…');FB.merge(LC,{matches:HIST,teams:TEAMS,del:DEL,tu:TU,lname:(curL()||{}).name||'',lnu:(curL()||{}).nu||0}).then(()=>setSync('☁ Synced · league '+LC.toUpperCase())).catch(e=>setSync('⚠ Sync failed ('+(e&&e.code||e)+') — saved on this device'))}
 async function connect(){if(unsub){try{unsub()}catch(e){}unsub=null}if(!FB||!LC)return;saveHist();unsub=FB.listen(LC,mergeRemote)}
 async function setLeague(c){LC=c;try{localStorage.setItem('vb-league-v1',c)}catch(e){}await connect();render()}
 async function initCloud(){FB=await window.fbReady;if(!FB){setSync('Local only — add your Firebase config to enable sync (see README)');return}
  if(!LC){setSync('Local only — start or join a league below to sync');return}await connect()}
+let LEAGUES=[];
+function curL(){return LEAGUES.find(l=>l.code==LC)}
+function lname(c){const l=LEAGUES.find(x=>x.code==c);return (l&&l.name)||c}
+function saveLeagues(){try{localStorage.setItem('vb-leagues-v1',JSON.stringify(LEAGUES))}catch(e){}}
+function persist(){try{localStorage.setItem('vb-d-'+(LC||'local'),JSON.stringify({HIST,TEAMS,DEL,TU}))}catch(e){}}
+function loadBucket(){let d=null;try{d=JSON.parse(localStorage.getItem('vb-d-'+(LC||'local')))}catch(e){}
+ if(!d&&!localStorage.getItem('vb-migrated')){try{d={HIST:JSON.parse(localStorage.getItem('vb-history-v1'))||[],TEAMS:JSON.parse(localStorage.getItem('vb-teams-v1'))||[]};const m=JSON.parse(localStorage.getItem('vb-meta-v1'))||{};d.DEL=m.DEL||[];d.TU=m.TU||0}catch(e){d=null}}
+ try{localStorage.setItem('vb-migrated','1')}catch(e){}
+ d=d||{};HIST=d.HIST||[];TEAMS=d.TEAMS||[];DEL=d.DEL||[];TU=d.TU||0}
+function mergeRemote(d){if(!d)return false;let ch=mergeRemote0(d);const l=curL();
+ if(l&&(d.lnu||0)>(l.nu||0)){l.name=d.lname||'';l.nu=d.lnu;saveLeagues();ch=true;if(view=='home')render()}return ch}
+async function openBucket(c,adopt){persist();if(unsub){try{unsub()}catch(e){}unsub=null}LC=c;try{localStorage.setItem('vb-league-v1',c)}catch(e){}
+ if(!adopt)loadBucket();persist();
+ if(!c)setSync('Local only \u2014 start or join a league below to sync');else await connect();render()}
+async function switchLeague(c){if(c==LC)return;await openBucket(c,false)}
+function renameLeague(){const l=curL();if(!l)return;const n=prompt('League name:',l.name||'');if(n===null)return;l.name=n.trim();l.nu=Date.now();saveLeagues();saveHist();render()}
+async function newLeague(){if(!FB){alert('Sync is not set up on this site: config.js needs your Firebase details.');return}
+ const nm=prompt('Name this league (you can change it later):','');if(nm===null)return;
+ const a='ABCDEFGHJKMNPQRSTUVWXYZ23456789';let c='VB-';for(let i=0;i<8;i++)c+=a[Math.floor(Math.random()*a.length)];
+ LEAGUES.push({code:c,name:nm.trim(),nu:Date.now()});saveLeagues();await openBucket(c,!LC)}
+async function joinLeague(){let c=($('imp').value||'').toUpperCase().replace(/[^A-Z0-9-]/g,'');if(c=='VOLLEYBALL')c='volleyball';
+ if(c.length<4){alert('Enter a valid sync code.');return}
+ if(!FB){alert('Sync is not set up on this site: config.js needs your Firebase details.');return}
+ if(c==LC){alert('This device is already on that league.');return}
+ const known=LEAGUES.some(l=>l.code==c);
+ if(!known&&!confirm('Join league '+c+'?'+(LC?'':' This device\u2019s matches and teams will be merged into it.')))return;
+ if(!known){LEAGUES.push({code:c,name:'',nu:0});saveLeagues()}
+ await openBucket(c,!LC&&!known)}
+async function leaveLeague(){const old=LC;if(!old)return;if(!confirm('Leave '+lname(old)+'? This device keeps a local copy of its data and stops syncing. Other devices are not affected.'))return;
+ try{localStorage.setItem('vb-d-local',JSON.stringify({HIST,TEAMS,DEL,TU}))}catch(e){}
+ LEAGUES=LEAGUES.filter(l=>l.code!=old);saveLeagues();await openBucket('',false);try{localStorage.removeItem('vb-d-'+old)}catch(e){}}
+try{LEAGUES=JSON.parse(localStorage.getItem('vb-leagues-v1'))||[]}catch(e){}
+if(LC&&!LEAGUES.some(l=>l.code==LC)){LEAGUES.push({code:LC,name:'',nu:0});saveLeagues()}
+loadBucket();
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 render();initCloud();
 </script></body></html>
