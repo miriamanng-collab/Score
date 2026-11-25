@@ -13,10 +13,12 @@
 <script src="config.js"></script>
 <script>window.fbReady=new Promise(r=>{window._fbres=r})</script>
 <script type="module">
-import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import {getFirestore,doc,getDoc,onSnapshot,runTransaction} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const c=window.FIREBASE_CONFIG;
-if(!c||!c.projectId||String(c.projectId).startsWith('YOUR')){window._fbres(null)}else{
+try{
+const [{initializeApp},{getFirestore,doc,getDoc,onSnapshot,runTransaction}]=await Promise.all([import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js'),import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js')]);
+const c=window.FIREBASE_CONFIG,bad=v=>!v||/^YOUR/.test(String(v));
+if(!c){window._fbwhy='config.js did not load. Check that it is uploaded next to index.html in GitHub.';window._fbres(null)}
+else if(bad(c.projectId)||bad(c.apiKey)){window._fbwhy='config.js still has placeholder values. Paste your Firebase config into it.';window._fbres(null)}
+else{
  const db=getFirestore(initializeApp(c));
  window._fbres({
   listen:(code,cb)=>onSnapshot(doc(db,'leagues',code),s=>{if(s.exists())cb(JSON.parse(s.data().json))},e=>window.onSyncErr&&window.onSyncErr(e)),
@@ -27,6 +29,7 @@ if(!c||!c.projectId||String(c.projectId).startsWith('YOUR')){window._fbres(null)
     const useL=(L.tu||0)>=(d.tu||0);m={matches:all,del,teams:useL?L.teams:d.teams,tu:Math.max(L.tu||0,d.tu||0),lname:(L.lnu||0)>=(d.lnu||0)?L.lname:d.lname,lnu:Math.max(L.lnu||0,d.lnu||0)}}
    tx.set(r,{json:JSON.stringify(m),updated:Date.now()})})
  })}
+}catch(e){window._fbwhy='Firebase could not load ('+(e&&e.message||e)+'). Check your internet connection.';window._fbres(null)}
 </script>
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Volleyball Score"><meta name="theme-color" content="#c8641a">
 <style>
@@ -179,7 +182,7 @@ let DB=null,unsub=null;
 async function connect(){if(unsub){try{unsub()}catch(e){}unsub=null}sref=DB.collection('shared').doc(LC);
  try{const s=await sref.get();if(s.exists)mergeRemote(s.data())}catch(e){}
  saveHist();unsub=sref.onSnapshot(s=>{if(s.exists)mergeRemote(s.data())},()=>{})}
-async function setLeague(c){if(document.activeElement)document.activeElement.blur();if(!FB){alert('Sync is not set up on this site: config.js needs your Firebase details.');return}LC=c;try{localStorage.setItem('vb-league-v1',c)}catch(e){}if(DB)await connect();render()}
+async function setLeague(c){if(document.activeElement)document.activeElement.blur();if(!await ensureFB()){alert('Sync is not set up: '+(window._fbwhy||'Firebase is still loading, try again in a few seconds.'));return}LC=c;try{localStorage.setItem('vb-league-v1',c)}catch(e){}if(DB)await connect();render()}
 async function joinLeague(){let c=$('imp').value.toUpperCase().replace(/[^A-Z0-9-]/g,'');if(c=='VOLLEYBALL')c='volleyball';if(c.length<4){alert('Enter a valid sync code.');return}if(c==LC){alert('This device is already on that league.');return}if(!confirm('Join league '+c+'? This device’s matches and teams will be merged into it.'))return;await setLeague(c)}
 async function newLeague(){if(!confirm('Start a new league with a new sync code? This device’s current matches and teams carry over.'))return;const a='ABCDEFGHJKMNPQRSTUVWXYZ23456789';let c='VB-';for(let i=0;i<8;i++)c+=a[Math.floor(Math.random()*a.length)];await setLeague(c)}
 function snap(){H.push(JSON.stringify(S))}
@@ -251,13 +254,14 @@ function render(){
  $('app').innerHTML=h;
 }
 let FB=null;
+async function ensureFB(){if(!FB)FB=await Promise.race([window.fbReady,new Promise(r=>setTimeout(()=>r(null),8000))]);return FB}
 function leaveLeague(){if(!confirm('Leave league '+LC.toUpperCase()+'? This device keeps its current matches and teams but stops syncing. Other devices are not affected.'))return;if(unsub){try{unsub()}catch(e){}unsub=null}LC='';try{localStorage.removeItem('vb-league-v1')}catch(e){}setSync('Local only — start or join a league below to sync');render()}
 window.onSyncErr=e=>setSync('⚠ Sync error ('+(e&&e.code||e)+'). Check Firestore rules and config.js.');
-async function syncNow(){if(!LC){const c=($('imp')||{}).value;if(c&&c.trim()){await joinLeague();return}alert('You haven’t joined a league yet. Type the code in the “Join a league” box and tap Join league.');return}if(!FB){alert('Sync is not set up on this site: config.js needs your Firebase details.');return}try{setSync('☁ Syncing…');const d=await FB.get(LC);if(d)mergeRemote(d);saveHist();render()}catch(e){setSync('⚠ Sync failed ('+(e&&e.code||e)+')')}}
+async function syncNow(){if(!LC){const c=($('imp')||{}).value;if(c&&c.trim()){await joinLeague();return}alert('You haven’t joined a league yet. Type the code in the “Join a league” box and tap Join league.');return}if(!await ensureFB()){alert('Sync is not set up: '+(window._fbwhy||'Firebase is still loading, try again in a few seconds.'));return}try{setSync('☁ Syncing…');const d=await FB.get(LC);if(d)mergeRemote(d);saveHist();render()}catch(e){setSync('⚠ Sync failed ('+(e&&e.code||e)+')')}}
 function saveHist(){persist();if(!FB||!LC)return;setSync('☁ Syncing…');FB.merge(LC,{matches:HIST,teams:TEAMS,del:DEL,tu:TU,lname:(curL()||{}).name||'',lnu:(curL()||{}).nu||0}).then(()=>setSync('☁ Synced · league '+LC.toUpperCase())).catch(e=>setSync('⚠ Sync failed ('+(e&&e.code||e)+') — saved on this device'))}
 async function connect(){if(unsub){try{unsub()}catch(e){}unsub=null}if(!FB||!LC)return;saveHist();unsub=FB.listen(LC,mergeRemote)}
 async function setLeague(c){LC=c;try{localStorage.setItem('vb-league-v1',c)}catch(e){}await connect();render()}
-async function initCloud(){FB=await window.fbReady;if(!FB){setSync('Local only — add your Firebase config to enable sync (see README)');return}
+async function initCloud(){FB=await window.fbReady;if(!FB){setSync('⚠ Sync is off: '+(window._fbwhy||'Firebase did not respond.'));return}
  if(!LC){setSync('Local only — start or join a league below to sync');return}await connect()}
 let LEAGUES=[];
 function curL(){return LEAGUES.find(l=>l.code==LC)}
@@ -275,13 +279,13 @@ async function openBucket(c,adopt){persist();if(unsub){try{unsub()}catch(e){}uns
  if(!c)setSync('Local only \u2014 start or join a league below to sync');else await connect();render()}
 async function switchLeague(c){if(c==LC)return;await openBucket(c,false)}
 function renameLeague(){const l=curL();if(!l)return;const n=prompt('League name:',l.name||'');if(n===null)return;l.name=n.trim();l.nu=Date.now();saveLeagues();saveHist();render()}
-async function newLeague(){if(!FB){alert('Sync is not set up on this site: config.js needs your Firebase details.');return}
+async function newLeague(){if(!await ensureFB()){alert('Sync is not set up: '+(window._fbwhy||'Firebase is still loading, try again in a few seconds.'));return}
  const nm=prompt('Name this league (you can change it later):','');if(nm===null)return;
  const a='ABCDEFGHJKMNPQRSTUVWXYZ23456789';let c='VB-';for(let i=0;i<8;i++)c+=a[Math.floor(Math.random()*a.length)];
  LEAGUES.push({code:c,name:nm.trim(),nu:Date.now()});saveLeagues();await openBucket(c,!LC)}
 async function joinLeague(){let c=($('imp').value||'').toUpperCase().replace(/[^A-Z0-9-]/g,'');if(c=='VOLLEYBALL')c='volleyball';
  if(c.length<4){alert('Enter a valid sync code.');return}
- if(!FB){alert('Sync is not set up on this site: config.js needs your Firebase details.');return}
+ if(!await ensureFB()){alert('Sync is not set up: '+(window._fbwhy||'Firebase is still loading, try again in a few seconds.'));return}
  if(c==LC){alert('This device is already on that league.');return}
  const known=LEAGUES.some(l=>l.code==c);
  if(!known&&!confirm('Join league '+c+'?'+(LC?'':' This device\u2019s matches and teams will be merged into it.')))return;
